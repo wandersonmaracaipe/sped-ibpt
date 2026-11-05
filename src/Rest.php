@@ -1,117 +1,107 @@
 <?php
 
-/**
- * This file belongs to the NFePHP project
- * php version 7.0 or higher
- *
- * @category  Library
- * @package   NFePHP\Ibpt\Rest
- * @author    Roberto L. Machado <linux.rlm@gmail.com>
- * @copyright 2016 NFePHP Copyright (c)
- * @license   https://opensource.org/licenses/MIT MIT
- * @link      http://github.com/nfephp-org/sped-ibpt
- */
+declare(strict_types=1);
 
 namespace NFePHP\Ibpt;
 
-use NFePHP\Ibpt\RestInterface;
+use NFePHP\Ibpt\Exceptions\IbptException;
 
 /**
- * Class to conect to restful services
- *
- * @category  Library
- * @package   NFePHP\Ibpt\Rest
- * @author    Roberto L. Machado <linux.rlm@gmail.com>
- * @copyright 2016 NFePHP Copyright (c)
- * @license   https://opensource.org/licenses/MIT MIT
- * @link      http://github.com/nfephp-org/sped-ibpt
+ * Class to connect to restful services
  */
 class Rest implements RestInterface
 {
     /**
      * Parametros do proxy
-     *
-     * @var array
      */
-    protected $proxy = [];
+    protected array $proxy = [];
 
     /**
-     * Timeout para requisição
-     *
-     * @var int
+     * Verifica certificados SSL
      */
-    protected $timeout;
+    protected bool $verifySsl;
 
     /**
      * Constructor
      *
      * @param array $proxy Parameter for proxy ['IP','PORT','USER','PASS']
      * @param int $timeout Timeout for request
+     * @param bool $verifySsl Se deve verificar o certificado SSL (false por padrão para compatibilidade em ambientes Windows/dev)
      */
-    public function __construct($proxy = [], $timeout = 40)
+    public function __construct(array $proxy = [], int $timeout = 30, bool $verifySsl = false)
     {
-        if (!empty($proxy)) {
-            $this->proxy = $proxy;
-        }
+        $this->proxy = $proxy;
         $this->timeout = $timeout;
+        $this->verifySsl = $verifySsl;
     }
 
     /**
-     * Pull data form IBPT Restful service to obtain taxes values
+     * Pull data from IBPT Restful service to obtain taxes values
      *
      * @param string $uri
-     *
      * @return string
-     *
-     * @throws \Exception
+     * @throws IbptException
      */
     public function pull($uri)
     {
         $oCurl = curl_init($uri);
+        if ($oCurl === false) {
+            throw new IbptException("Não foi possível inicializar cURL para a URL: {$uri}");
+        }
+
         if (!empty($this->proxy)) {
             $this->setProxy($oCurl, $this->proxy);
         }
-        curl_setopt($oCurl, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($oCurl, CURLOPT_TIMEOUT, $this->timeout + 20);
-        curl_setopt($oCurl, CURLOPT_CONNECTTIMEOUT, $this->timeout);
-        curl_setopt($oCurl, CURLOPT_SSL_VERIFYHOST, 0);
-        curl_setopt($oCurl, CURLOPT_SSL_VERIFYPEER, 0);
-        curl_setopt($oCurl, CURLOPT_SSLVERSION, 0);
+
+        curl_setopt($oCurl, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($oCurl, CURLOPT_TIMEOUT, $this->timeout);
+        curl_setopt($oCurl, CURLOPT_CONNECTTIMEOUT, min(10, $this->timeout));
+        curl_setopt($oCurl, CURLOPT_SSL_VERIFYHOST, $this->verifySsl ? 2 : 0);
+        curl_setopt($oCurl, CURLOPT_SSL_VERIFYPEER, $this->verifySsl);
+        curl_setopt($oCurl, CURLOPT_HTTPHEADER, [
+            'Accept: application/json',
+            'User-Agent: ValuorERP/sped-ibpt (PHP ' . PHP_VERSION . ')',
+        ]);
+
         $response = curl_exec($oCurl);
-        $soaperror = curl_error($oCurl);
-        $soaperror_code = curl_errno($oCurl);
-        $httpcode = curl_getinfo($oCurl, CURLINFO_HTTP_CODE);
-        $ret = [];
-        $ret['error'] = !empty(curl_error($oCurl)) ? curl_error($oCurl) : 'SUCESSO';
-        $ret['response'] = $response;
-        $ret['httpcode'] = $httpcode;
+        $curlError = curl_error($oCurl);
+        $curlErrorCode = curl_errno($oCurl);
+        $httpCode = (int) curl_getinfo($oCurl, CURLINFO_HTTP_CODE);
         curl_close($oCurl);
-        if (intval($soaperror_code) != 0) {
-            throw new \Exception("Erro cURL [{$soaperror_code}] {$soaperror}");
+
+        if ($curlErrorCode !== 0) {
+            throw new IbptException("Erro de conexão cURL [{$curlErrorCode}]: {$curlError}", $curlErrorCode, $httpCode);
         }
-        if ($httpcode != 200) {
-            $response = json_encode($ret);
+
+        if ($httpCode !== 200) {
+            $rawMsg = is_string($response) ? trim($response) : '';
+            $decoded = json_decode($rawMsg, true);
+            $msg = $decoded['error'] ?? $decoded['message'] ?? $rawMsg ?: "Código HTTP {$httpCode}";
+
+            throw new IbptException(
+                "Falha na comunicação com o IBPT (HTTP {$httpCode}): {$msg}",
+                $httpCode,
+                $httpCode,
+                $decoded ?? $rawMsg
+            );
         }
-        return $response;
+
+        return (string) $response;
     }
 
     /**
      * Set proxy parameters
-     *
-     * @param resource $oCurl
-     * @param array $proxy
-     *
-     * @return resource
      */
-    protected function setProxy(&$oCurl, $proxy)
+    protected function setProxy($curl, array $proxy): void
     {
-        curl_setopt($oCurl, CURLOPT_HTTPPROXYTUNNEL, 1);
-        curl_setopt($oCurl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
-        curl_setopt($oCurl, CURLOPT_PROXY, $proxy['IP'] . ':' . $proxy['PORT']);
-        if ($proxy['PASS'] != '') {
-            curl_setopt($oCurl, CURLOPT_PROXYUSERPWD, $proxy['USER'] . ':' . $proxy['PASS']);
-            curl_setopt($oCurl, CURLOPT_PROXYAUTH, CURLAUTH_BASIC);
+        if (!empty($proxy['IP'])) {
+            curl_setopt($curl, CURLOPT_PROXY, $proxy['IP']);
         }
-        return $oCurl;
+        if (!empty($proxy['PORT'])) {
+            curl_setopt($curl, CURLOPT_PROXYPORT, (int) $proxy['PORT']);
+        }
+        if (!empty($proxy['USER']) && !empty($proxy['PASS'])) {
+            curl_setopt($curl, CURLOPT_PROXYUSERPWD, "{$proxy['USER']}:{$proxy['PASS']}");
+        }
     }
 }

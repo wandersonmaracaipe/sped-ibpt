@@ -1,81 +1,50 @@
 <?php
 
-/**
- * This file belongs to the NFePHP project
- * php version 7.0 or higher
- *
- * @category  Library
- * @package   NFePHP\Ibpt\Rest
- * @author    Roberto L. Machado <linux.rlm@gmail.com>
- * @copyright 2016 NFePHP Copyright (c)
- * @license   https://opensource.org/licenses/MIT MIT
- * @link      http://github.com/nfephp-org/sped-ibpt
- */
+declare(strict_types=1);
 
 namespace NFePHP\Ibpt\Tests;
 
+use InvalidArgumentException;
+use NFePHP\Ibpt\DTO\TributosResponse;
+use NFePHP\Ibpt\Exceptions\IbptException;
 use NFePHP\Ibpt\Ibpt;
+use NFePHP\Ibpt\RestInterface;
 use PHPUnit\Framework\TestCase;
 
-/**
- * Unit Tests
- *
- * @category  Library
- * @package   NFePHP\Ibpt\Rest
- * @author    Roberto L. Machado <linux.rlm@gmail.com>
- * @copyright 2016 NFePHP Copyright (c)
- * @license   https://opensource.org/licenses/MIT MIT
- * @link      http://github.com/nfephp-org/sped-ibpt
- */
 class IbptTest extends TestCase
 {
-    /**
-     *
-     * @var Ibpt
-     */
-    public $ibpt;
-    /**
-     *
-     * @var object
-     */
+    public Ibpt $ibpt;
     public $dummyRest;
-    /**
-     *
-     * @var array
-     */
-    public $expectedProd = [
+
+    public array $expectedProd = [
         'Codigo' => '60063210',
         'UF' => 'SP',
         'EX' => 0,
         'Descricao' => 'Tecidos de malha de fibras sinteticas, tintos, de náilon ou de outras poliamidas',
         'Nacional' => 13.45,
-        'Estadual' => 18,
+        'Estadual' => 18.0,
         'Importado' => 36.08,
-        'Municipal' => 0,
+        'Municipal' => 0.0,
         'Tipo' => 0,
         'VigenciaInicio' => '01/04/2018',
         'VigenciaFim' => '30/06/2018',
         'Chave' => 'F3W1D7',
         'Versao' => '18.1.B',
         'Fonte' => 'IBPT/empresometro.com.br',
-        'Valor' => 60,
+        'Valor' => 60.0,
         'ValorTributoNacional' => 8.07,
         'ValorTributoEstadual' => 10.8,
         'ValorTributoImportado' => 21.65,
-        'ValorTributoMunicipal' => 0
+        'ValorTributoMunicipal' => 0.0,
     ];
-    /**
-     *
-     * @var array
-     */
-    public $expectedServ = [
+
+    public array $expectedServ = [
         'Codigo' => '0107',
         'UF' => 'SP',
-        'Descricao' => 'Suporte técnico em informática, inclusive instalação, '
-        . 'configuração e manutenção de programas de computação e bancos de dados.',
+        'Descricao' => 'Suporte técnico em informática, inclusive instalação, configuração e manutenção de programas de computação e bancos de dados.',
         'Tipo' => 2,
         'Nacional' => 13.45,
-        'Estadual' => 0,
+        'Estadual' => 0.0,
         'Municipal' => 2.7,
         'Importado' => 15.45,
         'VigenciaInicio' => '01/04/2018',
@@ -83,38 +52,40 @@ class IbptTest extends TestCase
         'Chave' => 'F3W1D7',
         'Versao' => '18.1.B',
         'Fonte' => 'IBPT/empresometro.com.br',
-        'Valor' => 500,
+        'Valor' => 500.0,
         'ValorTributoNacional' => 67.25,
-        'ValorTributoEstadual' => 0,
+        'ValorTributoEstadual' => 0.0,
         'ValorTributoImportado' => 77.25,
-        'ValorTributoMunicipal' => 13.5
+        'ValorTributoMunicipal' => 13.5,
     ];
 
-
-    /**
-     * Set UP
-     */
-    public function setUp()
+    protected function setUp(): void
     {
-        $this->dummyRest = $this->getMockBuilder('\NFePHP\Ibpt\RestInterface')
-            ->setMethods(['pull'])
-            ->getMock();
+        $this->dummyRest = $this->createMock(RestInterface::class);
         $this->dummyRest->method('pull')->willReturn(json_encode($this->expectedProd));
-        $this->ibpt = new Ibpt('12345678901234', 'a5354bf3890s0849', [], $this->dummyRest);
+        $this->ibpt = new Ibpt('12.345.678/0001-95', 'a5354bf3890s0849', [], $this->dummyRest);
     }
 
-    /**
-     * Test check instanciate
-     */
-    public function testShouldInstantiate()
+    public function testShouldInstantiate(): void
     {
         $this->assertInstanceOf(Ibpt::class, $this->ibpt);
+        $this->assertSame('12345678000195', $this->ibpt->getCnpj());
+        $this->assertSame('a5354bf3890s0849', $this->ibpt->getToken());
     }
 
-    /**
-     * Test Product Taxes
-     */
-    public function testProductTaxes()
+    public function testValidationThrowsOnEmptyCnpj(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        new Ibpt('', 'token123');
+    }
+
+    public function testValidationThrowsOnEmptyToken(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        new Ibpt('12345678000195', '');
+    }
+
+    public function testProductTaxesCompatibility(): void
     {
         $expected = json_decode(json_encode($this->expectedProd));
         $resp = $this->ibpt->productTaxes(
@@ -129,18 +100,15 @@ class IbptTest extends TestCase
         $this->assertEquals($expected, $resp);
     }
 
-    public function testServiceTaxes()
+    public function testServiceTaxesCompatibility(): void
     {
-        $this->dummyRest = $this->getMockBuilder('\NFePHP\Ibpt\RestInterface')
-            ->setMethods(['pull'])
-            ->getMock();
+        $mockRest = $this->createMock(RestInterface::class);
+        $mockRest->method('pull')->willReturn(json_encode($this->expectedServ));
 
-        $this->dummyRest->method('pull')->willReturn(json_encode($this->expectedServ));
-
-        $this->ibpt = new Ibpt('12345678901234', 'a5354bf3890s0849', [], $this->dummyRest);
+        $ibpt = new Ibpt('12345678000195', 'token', [], $mockRest);
 
         $expected = json_decode(json_encode($this->expectedServ));
-        $resp = $this->ibpt->serviceTaxes(
+        $resp = $ibpt->serviceTaxes(
             'SP',
             '0107',
             'Suporte técnico em informática',
@@ -148,5 +116,47 @@ class IbptTest extends TestCase
             500.00
         );
         $this->assertEquals($expected, $resp);
+    }
+
+    public function testConsultarProdutoRetornaDTO(): void
+    {
+        $dto = $this->ibpt->consultarProduto('SP', '60063210', 0, 'Tecidos', 'kg', 60.0);
+        $this->assertInstanceOf(TributosResponse::class, $dto);
+        $this->assertSame('60063210', $dto->codigo);
+        $this->assertSame('SP', $dto->uf);
+        $this->assertSame(13.45, $dto->nacional);
+        $this->assertSame(18.0, $dto->estadual);
+        $this->assertSame(0.0, $dto->municipal);
+        $this->assertSame(31.45, $dto->getAliquotaTotalNacional());
+        $this->assertSame(18.87, $dto->getValorTributoTotalNacional());
+        $this->assertIsArray($dto->toArray());
+    }
+
+    public function testConsultarServicoRetornaDTO(): void
+    {
+        $mockRest = $this->createMock(RestInterface::class);
+        $mockRest->method('pull')->willReturn(json_encode($this->expectedServ));
+
+        $ibpt = new Ibpt('12345678000195', 'token', [], $mockRest);
+        $dto = $ibpt->consultarServico('SP', '0107', 'Suporte', 'UN', 500.0);
+
+        $this->assertInstanceOf(TributosResponse::class, $dto);
+        $this->assertSame('0107', $dto->codigo);
+        $this->assertSame(13.45, $dto->nacional);
+        $this->assertSame(2.7, $dto->municipal);
+        $this->assertSame(16.15, $dto->getAliquotaTotalNacional());
+        $this->assertSame(80.75, $dto->getValorTributoTotalNacional());
+    }
+
+    public function testThrowsExceptionOnApiError(): void
+    {
+        $mockRest = $this->createMock(RestInterface::class);
+        $mockRest->method('pull')->willReturn(json_encode(['error' => 'Token invalido ou expirado']));
+
+        $ibpt = new Ibpt('12345678000195', 'token', [], $mockRest);
+
+        $this->expectException(IbptException::class);
+        $this->expectExceptionMessage('Erro retornado pelo IBPT: Token invalido ou expirado');
+        $ibpt->productTaxes('SP', '60063210');
     }
 }

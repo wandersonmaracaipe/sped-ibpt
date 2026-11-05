@@ -18,18 +18,14 @@
         }
     ],
     "require": {
-        "php" : ">=7.0",
+        "php" : ">=7.4 || ^8.0",
         "ext-curl": "*",
         "ext-json": "*",
         "ext-mbstring": "*",
         "ext-openssl": "*"
     },
     "require-dev": {
-        "squizlabs/php_codesniffer": "dev-master",
-        "phpunit/phpunit": "^6",
-        "scrutinizer/ocular": "^1.3",
-        "phpstan/phpstan": "^0.12.99",
-        "phpcompatibility/php-compatibility": "^9.3"
+        "phpunit/phpunit": "^9.5 || ^9.6"
     },
     "autoload": {
         "psr-4": {
