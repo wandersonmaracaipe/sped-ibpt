@@ -39,3 +39,4 @@ class LiveApiTest extends TestCase
         $this->assertSame(100.0, $res->valor);
     }
 }
+
